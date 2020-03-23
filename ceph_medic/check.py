@@ -4,6 +4,9 @@ import logging
 from ceph_medic import runner, collector
 from tambo import Transport
 
+import concurrent.futures
+import threading
+
 logger = logging.getLogger(__name__)
 
 
@@ -82,11 +85,14 @@ Configured Nodes:
                     node_metadata['container'] = node['container']
                 ceph_medic.metadata['nodes'][daemon].append(node_metadata)
 
-        collector.collect()
-        test = runner.Runner()
-        test.ignore = ignored_codes
-        results = test.run()
-        runner.report(results)
+        collector_thread = threading.Thread(target=collector.collect())
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            test_thread = executor.submit(runner.Runner())
+            test = test_thread.result()
+            test.ignore = ignored_codes
+            results_thread = executor.submit(test.run())
+            results = results_thread.result()
+            runner.report(results)
         #XXX might want to make this configurable to not bark on warnings for
         # example, setting forcefully for now, but the results object doesn't
         # make a distinction between error and warning (!)
